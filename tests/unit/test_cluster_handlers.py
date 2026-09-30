@@ -166,6 +166,7 @@ class TestOnCreate(_PatchBase):
         on_cluster_create(spec, "cluster-cpu", "ns", {}, patch_obj, {})
 
         assert patch_obj.status["hardwareSummary"] == "CPU-only"
+        assert patch_obj.status["gpuSummary"] == "CPU-only"
         conditions = patch_obj.status["conditions"]
         gpu_cond = next(c for c in conditions if c["type"] == "GPUDiscovered")
         assert gpu_cond["status"] == "True"
@@ -286,6 +287,7 @@ class TestHardwareChange(_PatchBase):
             patch=patch_obj,
         )
 
+        self.mock_kueue.update_flavor_quotas.assert_not_called()
         assert patch_obj.status["hardwareSummary"] == ""
         assert patch_obj.status["gpuSummary"] == ""
 
@@ -356,12 +358,26 @@ class TestReconcileCPUCluster(_PatchBase):
             "clusterType": "cpu",
             "hardware": {"lastDiscovery": "2026-01-01T00:00:00+00:00", "gpus": [], "totalGPUs": 0},
         }
-        status = {"kubeconfigStatus": "Valid"}
+        status = {"kubeconfigStatus": "Valid", "hardwareSummary": "CPU-only"}
 
         _reconcile_cpu_cluster(spec, "cluster-cpu", status, patch_obj)
 
         assert patch_obj.spec == {}
         assert patch_obj.status == {}
+
+    def test_heals_missing_hardware_summary_after_discovery(self) -> None:
+        patch_obj = self._make_patch()
+        spec = {
+            "kubeconfigSecret": "kc",
+            "clusterType": "cpu",
+            "hardware": {"lastDiscovery": "2026-01-01T00:00:00+00:00", "gpus": [], "totalGPUs": 0},
+        }
+        status = {"kubeconfigStatus": "Valid"}
+
+        _reconcile_cpu_cluster(spec, "cluster-cpu", status, patch_obj)
+
+        assert patch_obj.spec == {}
+        assert patch_obj.status["hardwareSummary"] == "CPU-only"
 
     def test_does_not_duplicate_gpu_discovered_condition(self) -> None:
         patch_obj = self._make_patch()

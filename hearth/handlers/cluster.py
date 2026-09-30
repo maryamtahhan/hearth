@@ -92,23 +92,22 @@ def on_cluster_create(spec, name, namespace, status, patch, body, **kwargs):
     patch.status["kubeconfigStatus"] = kubeconfig_status
     patch.status["locked"] = False
 
+    kubeconfig_cond = _make_condition(
+        COND_KUBECONFIG_VALID,
+        "True" if kubeconfig_status == "Valid" else "False",
+        kubeconfig_status,
+    )
+
     if cluster_type == "cpu":
         patch.status["hardwareSummary"] = "CPU-only"
+        patch.status["gpuSummary"] = "CPU-only"
         patch.status["conditions"] = [
-            _make_condition(
-                COND_KUBECONFIG_VALID,
-                "True" if kubeconfig_status == "Valid" else "False",
-                kubeconfig_status,
-            ),
+            kubeconfig_cond,
             _make_condition(COND_GPU_DISCOVERED, "True", "CPUCluster"),
         ]
     else:
         patch.status["conditions"] = [
-            _make_condition(
-                COND_KUBECONFIG_VALID,
-                "True" if kubeconfig_status == "Valid" else "False",
-                kubeconfig_status,
-            ),
+            kubeconfig_cond,
             _make_condition(COND_GPU_DISCOVERED, "False", "Pending"),
         ]
 
@@ -145,14 +144,15 @@ def on_hardware_change(spec, name, old, new, patch, **kwargs):
 
     gpus = new.get("gpus", [])
     gpu_resources = [(g["shortName"], g["count"]) for g in gpus]
-
-    try:
-        ctx.kueue.update_flavor_quotas(name, gpu_resources)
-        logger.info("FournosCluster %s: updated CQ quotas from spec.hardware", name)
-    except Exception as exc:
-        logger.warning("FournosCluster %s: failed to update flavor quotas: %s", name, exc)
-
     cluster_type = spec.get("clusterType", "auto")
+
+    if gpu_resources or cluster_type == "cpu":
+        try:
+            ctx.kueue.update_flavor_quotas(name, gpu_resources)
+            logger.info("FournosCluster %s: updated CQ quotas from spec.hardware", name)
+        except Exception as exc:
+            logger.warning("FournosCluster %s: failed to update flavor quotas: %s", name, exc)
+
     summary = _build_hardware_summary(gpus, cluster_type)
     patch.status["hardwareSummary"] = summary
     patch.status["gpuSummary"] = summary
@@ -396,7 +396,10 @@ def _reconcile_gpu_discovery(spec, name, status, patch):
 
 def _reconcile_cpu_cluster(spec, name, status, patch):
     hardware = spec.get("hardware") or {}
+
     if hardware.get("lastDiscovery"):
+        if status.get("hardwareSummary") != "CPU-only":
+            patch.status["hardwareSummary"] = "CPU-only"
         return
 
     timestamp = datetime.now(timezone.utc).isoformat()
