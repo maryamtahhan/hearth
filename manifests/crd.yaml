@@ -75,7 +75,9 @@ spec:
                     Cluster hardware type. When set to "cpu", GPU discovery is
                     skipped and the cluster is treated as a CPU-only compute
                     target. When "auto" (default), the controller discovers
-                    hardware by inspecting node resources.
+                    hardware by inspecting node resources. When "gpu", behavior
+                    matches "auto" (discovery runs); the value is reserved for
+                    future policy differences.
                 owner:
                   type: string
                   description: >-

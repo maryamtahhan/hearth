@@ -63,8 +63,12 @@ class TestBuildHardwareSummary:
         ]
         assert _build_hardware_summary(gpus) == "8x A100, 4x H200"
 
-    def test_empty_returns_cpu_only(self) -> None:
-        assert _build_hardware_summary([]) == "CPU-only"
+    def test_empty_auto_returns_empty(self) -> None:
+        assert _build_hardware_summary([]) == ""
+        assert _build_hardware_summary([], "auto") == ""
+
+    def test_empty_cpu_returns_cpu_only(self) -> None:
+        assert _build_hardware_summary([], "cpu") == "CPU-only"
 
 
 class _PatchBase:
@@ -259,12 +263,31 @@ class TestHardwareChange(_PatchBase):
         new_hw = {"gpus": [], "totalGPUs": 0}
 
         on_hardware_change(
-            spec={"hardware": new_hw}, name="cluster-cpu", old={}, new=new_hw, patch=patch_obj
+            spec={"hardware": new_hw, "clusterType": "cpu"},
+            name="cluster-cpu",
+            old={},
+            new=new_hw,
+            patch=patch_obj,
         )
 
         self.mock_kueue.update_flavor_quotas.assert_called_once_with("cluster-cpu", [])
         assert patch_obj.status["hardwareSummary"] == "CPU-only"
         assert patch_obj.status["gpuSummary"] == "CPU-only"
+
+    def test_empty_gpus_auto_cluster_empty_summary(self) -> None:
+        patch_obj = self._make_patch()
+        new_hw = {"gpus": [], "totalGPUs": 0}
+
+        on_hardware_change(
+            spec={"hardware": new_hw, "clusterType": "auto"},
+            name="cluster-1",
+            old={},
+            new=new_hw,
+            patch=patch_obj,
+        )
+
+        assert patch_obj.status["hardwareSummary"] == ""
+        assert patch_obj.status["gpuSummary"] == ""
 
 
 class TestReconcileTTLExpiry(_PatchBase):
@@ -339,6 +362,25 @@ class TestReconcileCPUCluster(_PatchBase):
 
         assert patch_obj.spec == {}
         assert patch_obj.status == {}
+
+    def test_does_not_duplicate_gpu_discovered_condition(self) -> None:
+        patch_obj = self._make_patch()
+        spec = {"kubeconfigSecret": "kc", "clusterType": "cpu"}
+        status = {
+            "kubeconfigStatus": "Valid",
+            "conditions": [
+                {
+                    "type": "GPUDiscovered",
+                    "status": "True",
+                    "reason": "CPUCluster",
+                }
+            ],
+        }
+
+        _reconcile_cpu_cluster(spec, "cluster-cpu", status, patch_obj)
+
+        assert patch_obj.spec["hardware"]["lastDiscovery"]
+        assert patch_obj.status.get("conditions", []) == []
 
     def test_gpu_discovery_skips_for_cpu_type(self) -> None:
         patch_obj = self._make_patch()

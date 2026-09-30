@@ -47,9 +47,16 @@ def _make_condition(
     }
 
 
+def _condition_is_true(status: dict, cond_type: str) -> bool:
+    for cond in status.get("conditions") or []:
+        if cond.get("type") == cond_type:
+            return cond.get("status") == "True"
+    return False
+
+
 def _build_hardware_summary(gpus: list[dict], cluster_type: str = "auto") -> str:
     if not gpus:
-        return "CPU-only"
+        return "CPU-only" if cluster_type == "cpu" else ""
     parts = [f"{g['count']}x {g['shortName'].upper()}" for g in gpus]
     return ", ".join(parts)
 
@@ -145,7 +152,8 @@ def on_hardware_change(spec, name, old, new, patch, **kwargs):
     except Exception as exc:
         logger.warning("FournosCluster %s: failed to update flavor quotas: %s", name, exc)
 
-    summary = _build_hardware_summary(gpus)
+    cluster_type = spec.get("clusterType", "auto")
+    summary = _build_hardware_summary(gpus, cluster_type)
     patch.status["hardwareSummary"] = summary
     patch.status["gpuSummary"] = summary
 
@@ -400,9 +408,10 @@ def _reconcile_cpu_cluster(spec, name, status, patch):
         "lastError": None,
     }
     patch.status["hardwareSummary"] = "CPU-only"
-    patch.status.setdefault("conditions", []).append(
-        _make_condition(COND_GPU_DISCOVERED, "True", "CPUCluster")
-    )
+    if not _condition_is_true(status, COND_GPU_DISCOVERED):
+        patch.status.setdefault("conditions", []).append(
+            _make_condition(COND_GPU_DISCOVERED, "True", "CPUCluster")
+        )
     logger.info("FournosCluster %s: CPU-only cluster registered", name)
 
 
