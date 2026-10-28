@@ -359,7 +359,11 @@ class TestReconcileCPUCluster(_PatchBase):
             "clusterType": "cpu",
             "hardware": {"lastDiscovery": "2026-01-01T00:00:00+00:00", "gpus": [], "totalGPUs": 0},
         }
-        status = {"kubeconfigStatus": "Valid", "hardwareSummary": "CPU-only"}
+        status = {
+            "kubeconfigStatus": "Valid",
+            "hardwareSummary": "CPU-only",
+            "gpuSummary": "CPU-only",
+        }
 
         _reconcile_cpu_cluster(spec, "cluster-cpu", status, patch_obj)
 
