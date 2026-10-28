@@ -400,6 +400,8 @@ def _reconcile_cpu_cluster(spec, name, status, patch):
     if hardware.get("lastDiscovery"):
         if status.get("hardwareSummary") != "CPU-only":
             patch.status["hardwareSummary"] = "CPU-only"
+        if status.get("gpuSummary") != "CPU-only":
+            patch.status["gpuSummary"] = "CPU-only"
         return
 
     timestamp = datetime.now(timezone.utc).isoformat()
@@ -411,6 +413,7 @@ def _reconcile_cpu_cluster(spec, name, status, patch):
         "lastError": None,
     }
     patch.status["hardwareSummary"] = "CPU-only"
+    patch.status["gpuSummary"] = "CPU-only"
     if not _condition_is_true(status, COND_GPU_DISCOVERED):
         patch.status.setdefault("conditions", []).append(
             _make_condition(COND_GPU_DISCOVERED, "True", "CPUCluster")

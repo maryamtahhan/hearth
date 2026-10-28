@@ -345,6 +345,7 @@ class TestReconcileCPUCluster(_PatchBase):
         assert patch_obj.spec["hardware"]["gpus"] == []
         assert patch_obj.spec["hardware"]["consecutiveFailures"] == 0
         assert patch_obj.status["hardwareSummary"] == "CPU-only"
+        assert patch_obj.status["gpuSummary"] == "CPU-only"
         conditions = patch_obj.status.get("conditions", [])
         assert any(
             c["type"] == "GPUDiscovered" and c["status"] == "True" and c["reason"] == "CPUCluster"
@@ -378,6 +379,21 @@ class TestReconcileCPUCluster(_PatchBase):
 
         assert patch_obj.spec == {}
         assert patch_obj.status["hardwareSummary"] == "CPU-only"
+        assert patch_obj.status["gpuSummary"] == "CPU-only"
+
+    def test_heals_missing_gpu_summary_when_hardware_summary_present(self) -> None:
+        patch_obj = self._make_patch()
+        spec = {
+            "kubeconfigSecret": "kc",
+            "clusterType": "cpu",
+            "hardware": {"lastDiscovery": "2026-01-01T00:00:00+00:00", "gpus": [], "totalGPUs": 0},
+        }
+        status = {"kubeconfigStatus": "Valid", "hardwareSummary": "CPU-only"}
+
+        _reconcile_cpu_cluster(spec, "cluster-cpu", status, patch_obj)
+
+        assert patch_obj.spec == {}
+        assert patch_obj.status == {"gpuSummary": "CPU-only"}
 
     def test_does_not_duplicate_gpu_discovered_condition(self) -> None:
         patch_obj = self._make_patch()
